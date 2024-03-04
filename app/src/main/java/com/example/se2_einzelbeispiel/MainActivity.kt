@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.sp
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.PrintWriter
+import java.lang.Exception
 import java.lang.NumberFormatException
 import java.net.Socket
 
@@ -41,58 +42,62 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun App() {
+    val address = "se2-submission.aau.at"
+    val port = 20080
 
-    var responseText by remember {
-        mutableStateOf("No request yet!")
-    }
-
-    var requestText by remember {
-        mutableStateOf("")
-    }
+    var outputText by remember { mutableStateOf("No request yet!") }
+    var inputText by remember { mutableStateOf("") }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier.align(Alignment.Center)
         ) {
-            TextField(value = requestText,
+            TextField(
+                value = inputText,
                 onValueChange = { input ->
                     if(input.isEmpty() || input.all { char -> char.isDigit() }) {
-                        requestText = input
+                        inputText = input
                     }
                 },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                placeholder = { Text("Matrikelnummer...") },
+                placeholder = { Text("Matrikelnummer") },
             )
 
-            Box(
-                contentAlignment = Alignment.Center
-            ) {
-                Row(
+            Row {
+                Button(
+                    onClick = {
+                        try {
+                            Thread {
+                                outputText = sendRequest(address, port, inputText)
+                            }.start()
+                        } catch (e: IllegalThreadStateException) {
+                            Log.d("exception", "Thread could not be started correctly!")
+                            outputText = "Error starting networking thread!"
+                        }
+                    },
+                    modifier = Modifier.padding(0.dp, 10.dp, 0.dp, 10.dp),
                 ) {
-                    Button(onClick = {
-                        Thread {
-                            responseText = sendRequest("se2-submission.aau.at", 20080, requestText)
-                        }.start()
-                    }, modifier = Modifier
-                        .padding(0.dp, 10.dp, 0.dp, 10.dp)
-                    ) {
-                        Text(text = "Send to Server")
-                    }
+                    Text(text = "Send to Server")
+                }
 
-                    Button(onClick = {
-                        responseText = calculateBinFromSum(requestText)
-                    }, modifier = Modifier.padding(5.dp, 10.dp, 0.dp, 10.dp)
-
-                    ) {
-                        Text(text = "Sum to Binary")
-                    }
+                Button(
+                    onClick = {
+                        outputText = sumOfNumberStringToBinaryString(inputText)
+                    },
+                    modifier = Modifier.padding(5.dp, 10.dp, 0.dp, 10.dp)
+                ) {
+                    Text(text = "Sum to Binary")
                 }
             }
         }
     }
+    OutputField(outputText)
+}
+
+@Composable
+fun OutputField(outputText: String) {
     Box(
-        modifier = Modifier
-            .padding(20.dp, 30.dp),
+        modifier = Modifier.padding(20.dp, 30.dp),
         contentAlignment = Alignment.Center
     ) {
         Column {
@@ -101,30 +106,42 @@ fun App() {
                 style = TextStyle(fontSize = 24.sp),
             )
             Text(
-                text = responseText,
+                text = outputText,
                 style = TextStyle(fontSize = 15.sp),
             )
         }
     }
 }
 
-fun calculateBinFromSum(mn: String): String {
+fun sumOfNumberStringToBinaryString(number: String): String {
     val response = "Keine gültige Matrikelnummer!"
-    if(mn.length != 8) return response
+    if(number.length != 8) return response
 
     return try {
-        Integer.toBinaryString(mn.sumOf { char -> char.digitToInt() })
+        Integer.toBinaryString(number.sumOf { char -> char.digitToInt() })
     } catch (e: NumberFormatException) {
         Log.d("exception", "NumberFormatException")
-        "Could not convert to Number"
+        "Could not convert a char to a number!"
     }
 }
-fun sendRequest(address: String, port: Int, mn: String): String {
-    val socket = Socket(address, port)
-    val output = PrintWriter(socket.getOutputStream(), true)
-    val input = BufferedReader(InputStreamReader(socket.inputStream))
-    output.println(mn)
-    val result = input.readLine()
-    socket.close()
-    return result
+fun sendRequest(address: String, port: Int, requestContent: String): String {
+    return try {
+        val socket = Socket(address, port)
+        socket.soTimeout = 5000
+
+        val output = PrintWriter(socket.getOutputStream(), true)
+        val input = BufferedReader(InputStreamReader(socket.inputStream))
+
+        output.println(requestContent)
+        val result = input.readLine()
+
+        output.close()
+        input.close()
+        socket.close()
+
+        result
+    } catch (e: Exception) {
+        Log.d("exception", "Exception occurred during server request!")
+        "Error: Could not connect to server!"
+    }
 }
